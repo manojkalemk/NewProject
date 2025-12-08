@@ -6,6 +6,7 @@ import usersRouter from "./routes/users.js";
 import customersRouter from "./routes/customers.js";
 import adminsRouter from "./routes/admins.js";
 import cprojectsRouter from "./routes/cprojects.js";
+import compnayRouter from "./routes/company.js";
 
 dotenv.config();
 const app = express();
@@ -19,6 +20,7 @@ app.use("/users", usersRouter);
 app.use("/customers", customersRouter);
 app.use("/admins", adminsRouter);
 app.use("/cprojects", cprojectsRouter);
+app.use("/company", compnayRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);
