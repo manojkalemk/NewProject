@@ -8,6 +8,8 @@ import adminsRouter from "./routes/admins.js";
 import cprojectsRouter from "./routes/cprojects.js";
 import compnayRouter from "./routes/company.js";
 
+import authRouter from "./routes/auth.js";
+
 dotenv.config();
 const app = express();
 app.use(cors());
@@ -21,6 +23,8 @@ app.use("/customers", customersRouter);
 app.use("/admins", adminsRouter);
 app.use("/cprojects", cprojectsRouter);
 app.use("/company", compnayRouter);
+
+app.use("/auth", authRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);
