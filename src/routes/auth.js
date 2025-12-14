@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import pool from "../db.js";
+import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -118,6 +119,35 @@ router.post("/refresh", async (req, res, next) => {
     );
 
     res.json({ accessToken: newAccessToken });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/logout", authenticateToken, async (req, res, next) => {
+  try {
+    const { refreshToken, all } = req.body;
+
+    if (all === true) {
+      // Logout from all devices
+      await pool.query(`DELETE FROM refresh_tokens WHERE user_id = $1`, [
+        req.user.userId,
+      ]);
+
+      return res.json({ message: "all_sessions_revoked" });
+    }
+
+    if (!refreshToken) {
+      return res.status(400).json({ error: "refresh_token_required" });
+    }
+
+    // Logout single session
+    await pool.query(
+      `DELETE FROM refresh_tokens WHERE token = $1 AND user_id = $2`,
+      [refreshToken, req.user.userId]
+    );
+
+    return res.json({ message: "logged_out_successfully" });
   } catch (err) {
     next(err);
   }
