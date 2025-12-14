@@ -5,6 +5,7 @@ import {
   requireSelfOrAdmin,
   requireAdmin,
 } from "../middleware/auth.js";
+import bcrypt from "bcrypt";
 
 const router = express.Router();
 
@@ -64,7 +65,17 @@ router.get(
 // Create user
 router.post("/", authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const { fname, lname, email, phone, cname, pname, department } = req.body;
+    const {
+      fname,
+      lname,
+      email,
+      phone,
+      cname,
+      pname,
+      department,
+      password,
+      role,
+    } = req.body;
     if (
       !fname ||
       !lname ||
@@ -72,25 +83,42 @@ router.post("/", authenticateToken, requireAdmin, async (req, res, next) => {
       !phone ||
       !cname ||
       !pname ||
-      !department
+      !department ||
+      !password
     ) {
       return res.status(400).json({ error: "All fields are required!" });
     }
 
+    const passwordHash = await bcrypt.hash(password, 10);
+
     const result = await pool.query(
-      `INSERT INTO users (fname, lname, email, phone, cname, pname, department)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO users (fname, lname, email, phone, cname, pname, department, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (email) DO NOTHING
-       RETURNING ${userColumns}`,
-      [fname, lname, email, phone, cname, pname, department]
+       RETURNING id, fname, lname, email, phone, cname, pname, department, role, created_at`,
+      [
+        fname,
+        lname,
+        email,
+        phone,
+        cname,
+        pname,
+        department,
+        passwordHash,
+        role || "user",
+      ]
     );
 
+    // if (result.rows.length === 0) {
+    //   const { rows } = await pool.query(
+    //     `SELECT ${userColumns} FROM users WHERE email = $1`,
+    //     [email]
+    //   );
+    //   return res.status(200).json(rows[0]);
+    // }
+
     if (result.rows.length === 0) {
-      const { rows } = await pool.query(
-        `SELECT ${userColumns} FROM users WHERE email = $1`,
-        [email]
-      );
-      return res.status(200).json(rows[0]);
+      return res.status(409).json({ error: "email_already_exists" });
     }
 
     res.status(201).json(result.rows[0]);
