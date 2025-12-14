@@ -1,5 +1,10 @@
 import express from "express";
 import pool from "../db.js";
+import {
+  authenticateToken,
+  requireSelfOrAdmin,
+  requireAdmin,
+} from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -21,7 +26,7 @@ function buildUpdateQuery(fields = {}, id) {
 }
 
 //Read all
-router.get("/", async (req, res, next) => {
+router.get("/", authenticateToken, requireAdmin, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT ${userColumns} FROM users ORDER BY id`
@@ -33,25 +38,31 @@ router.get("/", async (req, res, next) => {
 });
 
 // Read by id
-router.get("/:id", async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) return res.status(400).json({ error: "invalid_id" });
+router.get(
+  "/:id",
+  authenticateToken,
+  requireSelfOrAdmin,
+  async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (Number.isNaN(id))
+        return res.status(400).json({ error: "invalid_id" });
 
-    const { rows } = await pool.query(
-      `SELECT ${userColumns} FROM users WHERE id = $1`,
-      [id]
-    );
-    if (rows.length === 0)
-      return res.status(404).json({ error: "user_not_found" });
-    res.json(rows[0]);
-  } catch (err) {
-    next(err);
+      const { rows } = await pool.query(
+        `SELECT ${userColumns} FROM users WHERE id = $1`,
+        [id]
+      );
+      if (rows.length === 0)
+        return res.status(404).json({ error: "user_not_found" });
+      res.json(rows[0]);
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 // Create user
-router.post("/", async (req, res, next) => {
+router.post("/", authenticateToken, requireAdmin, async (req, res, next) => {
   try {
     const { fname, lname, email, phone, cname, pname, department } = req.body;
     if (
@@ -98,72 +109,84 @@ router.post("/", async (req, res, next) => {
    - Accepts any subset of fields: fname, lname, email, phone, cname, pname, department
    - Returns updated row
    ------------------------- */
-router.patch("/:id", async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) return res.status(400).json({ error: "invalid_id" });
-
-    // only allow these fields to be updated
-    const allowed = [
-      "fname",
-      "lname",
-      "email",
-      "phone",
-      "cname",
-      "pname",
-      "department",
-    ];
-    const fields = {};
-    for (const k of allowed) {
-      if (req.body[k] !== undefined) fields[k] = req.body[k];
-    }
-
-    if (Object.keys(fields).length === 0) {
-      return res.status(400).json({ error: "no_updatable_fields", allowed });
-    }
-
-    const q = buildUpdateQuery(fields, id);
-    if (!q) return res.status(400).json({ error: "no_update_query" });
-
+router.patch(
+  "/:id",
+  authenticateToken,
+  requireSelfOrAdmin,
+  async (req, res, next) => {
     try {
-      const { rows } = await pool.query(q.sql, q.values);
-      if (rows.length === 0)
-        return res.status(404).json({ error: "user_not_found" });
-      return res.json(rows[0]);
+      const id = Number(req.params.id);
+      if (Number.isNaN(id))
+        return res.status(400).json({ error: "invalid_id" });
+
+      // only allow these fields to be updated
+      const allowed = [
+        "fname",
+        "lname",
+        "email",
+        "phone",
+        "cname",
+        "pname",
+        "department",
+      ];
+      const fields = {};
+      for (const k of allowed) {
+        if (req.body[k] !== undefined) fields[k] = req.body[k];
+      }
+
+      if (Object.keys(fields).length === 0) {
+        return res.status(400).json({ error: "no_updatable_fields", allowed });
+      }
+
+      const q = buildUpdateQuery(fields, id);
+      if (!q) return res.status(400).json({ error: "no_update_query" });
+
+      try {
+        const { rows } = await pool.query(q.sql, q.values);
+        if (rows.length === 0)
+          return res.status(404).json({ error: "user_not_found" });
+        return res.json(rows[0]);
+      } catch (err) {
+        // handle unique constraint violation
+        if (err.code === "23505")
+          return res
+            .status(409)
+            .json({ error: "duplicate_key", detail: err.detail });
+        throw err;
+      }
     } catch (err) {
-      // handle unique constraint violation
-      if (err.code === "23505")
-        return res
-          .status(409)
-          .json({ error: "duplicate_key", detail: err.detail });
-      throw err;
+      next(err);
     }
-  } catch (err) {
-    next(err);
   }
-});
+);
 
 /* -------------------------
    Delete - DELETE /users/:id
    - Permanently removes the user and returns deleted row
    ------------------------- */
-router.delete("/:id", async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) return res.status(400).json({ error: "invalid_id" });
+router.delete(
+  "/:id",
+  authenticateToken,
+  requireAdmin,
+  async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (Number.isNaN(id))
+        return res.status(400).json({ error: "invalid_id" });
 
-    const { rows } = await pool.query(
-      `DELETE FROM users WHERE id = $1 RETURNING ${userColumns}`,
-      [id]
-    );
+      const { rows } = await pool.query(
+        `DELETE FROM users WHERE id = $1 RETURNING ${userColumns}`,
+        [id]
+      );
 
-    if (rows.length === 0)
-      return res.status(404).json({ error: "user_not_found" });
-    // Return deleted row (useful for client-side undo)
-    return res.json(rows[0]);
-  } catch (err) {
-    next(err);
+      if (rows.length === 0)
+        return res.status(404).json({ error: "user_not_found" });
+      // Return deleted row (useful for client-side undo)
+      return res.json(rows[0]);
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 export default router;

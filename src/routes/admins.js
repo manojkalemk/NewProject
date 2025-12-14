@@ -1,8 +1,12 @@
 import express from "express";
 import pool from "../db.js";
+import { authenticateToken, requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 const adminColumns = "id, fname, lname, email, phone, gender";
+
+router.use(authenticateToken);
+router.use(requireAdmin);
 
 /* Helper: build dynamic UPDATE query */
 function buildUpdateQuery(fields = {}, id) {
